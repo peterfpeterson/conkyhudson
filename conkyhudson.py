@@ -14,7 +14,7 @@ def getJobStatus(server, job):
     return x.getBuildStatus(server, job)
     
     
-def getOutput(template, jobs):
+def getOutput(template, jobs, showpossible):
     output = u""
     end = False
     a = 0
@@ -51,7 +51,7 @@ def getOutput(template, jobs):
             
         # if there is some template text...
         if a > b + 1:
-            output += parseResultFields(template[b + 1 : a], jobs)
+            output += parseResultFields(template[b + 1 : a], jobs, showpossible)
             
         a = a + 1
 
@@ -129,7 +129,7 @@ def processCulpritField(job, outputOptions):
     
 
     
-def parseResultFields(hudsonStatus, jobs):
+def parseResultFields(hudsonStatus, jobs, showpossible):
     """
     Taking in the input from the template, in the form of [job;field;output values]
     and taking in the data from the jobs, return an appropriate string for the output.
@@ -152,7 +152,9 @@ def parseResultFields(hudsonStatus, jobs):
     if(len(fieldValues) > 2):
         options = fieldValues[2]
     
-    
+    if showpossible:
+        print "possible keys: ", job.keys() ############REMOVE
+        return ""
     
     retVal = ''
     statusValue = None
@@ -173,23 +175,23 @@ def parseResultFields(hudsonStatus, jobs):
     return retVal
     
     
-def parseTemplate(contents, baseurl, jobs):
+def parseTemplate(contents, baseurl, jobs, showpossible):
     thing = re.finditer("\[(.*?)\]", contents)
     jobData = getAndRemoveJobs(thing,contents)
     if baseurl is not None and jobs is not None:
         jobData[0][str(len(jobData[0].keys())+1)] = getJobStatus(baseurl, jobs)
     
-    final = getOutput(jobData[1], jobData[0])
+    final = getOutput(jobData[1], jobData[0], showpossible)
     
     #print "FINAL CONTENTS ====================\n",final
     #print "DONE =============================="
 
     return final
 
-def outputBuildStatus(template, baseurl, jobs):
+def outputBuildStatus(template, baseurl, jobs, showpossible):
     f=open(template)
     contents = f.read()
-    templateValues = parseTemplate(contents, baseurl, jobs)
+    templateValues = parseTemplate(contents, baseurl, jobs, showpossible)
     
     print templateValues
     
@@ -202,12 +204,13 @@ def main(argv):
     parser.add_option("-t", "--template", dest="template", default=None)
     parser.add_option("-b", "--baseurl", dest="baseurl", default=None)
     parser.add_option("-j", "--jobs", dest="jobs", default=None)
+    parser.add_option("", "--showpossible", dest="showpossible", action="store_true")
     (options, args) = parser.parse_args()
 
     if options.template is None:
         parser.error("Failed to specify the template")
 
-    outputBuildStatus(options.template, options.baseurl, options.jobs)
+    outputBuildStatus(options.template, options.baseurl, options.jobs, showpossible=options.showpossible)
     
     
 if __name__ == "__main__":
