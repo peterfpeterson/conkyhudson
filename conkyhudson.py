@@ -115,9 +115,15 @@ def processCulpritField(job, outputOptions):
     for culprit in culprits:
         if(culpritsString != ''):
             culpritsString += ", "
-        culpritsString += culprit["fullName"]
+        temp = culprit["fullName"]
+        if len(temp) <= 0:
+            temp = culprit
+        culpritsString += temp
         
-    return culpritsString
+    if len(culpritsString) <= 0:
+        return "unknown"
+    else:
+        return culpritsString
     
     
     
@@ -167,9 +173,11 @@ def parseResultFields(hudsonStatus, jobs):
     return retVal
     
     
-def parseTemplate(contents):
+def parseTemplate(contents, server, jobs):
     thing = re.finditer("\[(.*?)\]", contents)
     jobData = getAndRemoveJobs(thing,contents)
+    if server is not None and jobs is not None:
+        jobData[0][str(len(jobData[0].keys())+1)] = getJobStatus(server, jobs)
     
     final = getOutput(jobData[1], jobData[0])
     
@@ -178,37 +186,28 @@ def parseTemplate(contents):
 
     return final
 
-def outputBuildStatus(template):
+def outputBuildStatus(template, server, jobs):
     f=open(template)
     contents = f.read()
-    templateValues = parseTemplate(contents)
+    templateValues = parseTemplate(contents, server, jobs)
     
     print templateValues
     
     #parseAllTemplateValues(templateValues)
 
 def main(argv):
-    try:
-        opts, args = getopt.getopt(argv, "hs:j:t:", ["help", "server", "jobs","template"])
-    except:
-        usage(argv)
-        sys.exit(2)
-        
-    for opt, arg in opts:
-        if opt in ("-h", "--help"):
-            usage()
-            sys.exit()
-            
-        elif opt in ("-s", "--server"):
-            server = arg
-            
-        elif opt in ("-j", "--jobs"):
-            jobs = arg
-            
-        elif opt in ("-t", "--template"):
-            template = arg
-            
-    outputBuildStatus(template)
+    import optparse
+    parser = optparse.OptionParser("usage: %prog <options>",
+                                   None, optparse.Option, "0.2", 'error')
+    parser.add_option("-t", "--template", dest="template", default=None)
+    parser.add_option("-s", "--server", dest="server", default=None)
+    parser.add_option("-j", "--jobs", dest="jobs", default=None)
+    (options, args) = parser.parse_args()
+
+    if options.template is None:
+        parser.error("Failed to specify the template")
+
+    outputBuildStatus(options.template, options.server, options.jobs)
     
     
 if __name__ == "__main__":
