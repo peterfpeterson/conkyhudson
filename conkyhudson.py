@@ -2,19 +2,10 @@
 
 import sys
 import getopt
-import hudsonstatus
+from hudsonstatus import HudsonStatus
 import re
 
-
-def usage(argv):
-    print "DUMB"
-    
-def getJobStatus(server, job):
-    x = hudsonstatus.HudsonStatus()
-    return x.getBuildStatus(server, job)
-    
-    
-def getOutput(template, jobs, showpossible):
+def getOutput(template, statuses):
     output = u""
     end = False
     a = 0
@@ -51,7 +42,7 @@ def getOutput(template, jobs, showpossible):
             
         # if there is some template text...
         if a > b + 1:
-            output += parseResultFields(template[b + 1 : a], jobs, showpossible)
+            output += parseResultFields(template[b + 1 : a], statuses)
             
         a = a + 1
 
@@ -69,119 +60,121 @@ def getAndRemoveJobs(templateIter, contents):
         theString = templateValue.group(1)
         fieldValues = theString.split(";")
         if(fieldValues[0] == "job"):
-            status = getJobStatus(fieldValues[2],fieldValues[3])
+            status = HudsonStatus(fieldValues[2],fieldValues[3])
             jobs[fieldValues[1]] = status
             contents = contents[0:templateValue.start() - charsRemoved] + contents[templateValue.end()- charsRemoved+1:]
             charsRemoved += templateValue.end() - templateValue.start()+1;
             
     return [jobs, contents]
-    
-def processResultField(job, outputOptions):
-    """Process the 'result' field """
 
-
-    statusValue = job["result"]
-    building = job["building"]
-    if(outputOptions == None):
-        if(statusValue == None):
-            if(building == True):
-                return "Building..."
-            else:
-                return "No status"
-        return statusValue
-    
-    outputStrings = outputOptions.split(",")
-    #print outputStrings
-    if(statusValue == "SUCCESS"):
-        return outputStrings[0]
-    elif(statusValue == "FAILURE"):
-        return outputStrings[1]
-    elif(statusValue == None and building == True):
-        return outputStrings[2]
-    elif(statusValue == "UNSTABLE"):
-        return outputStrings[3]
-    else:
-        return "Error"
-        
-def processCulpritField(job, outputOptions):
-    """Process the 'culprit' field"""
-    
-    culprits = job["culprits"]
-    if(culprits == None):
-        return outputOptions
-    
-    culpritsString = ''
-    
-    for culprit in culprits:
-        if(culpritsString != ''):
-            culpritsString += ", "
-        temp = culprit["fullName"]
-        if len(temp) <= 0:
-            temp = culprit
-        culpritsString += temp
-        
-    if len(culpritsString) <= 0:
-        return "unknown"
-    else:
-        return culpritsString
-    
-    
-    
-
-    
-def parseResultFields(hudsonStatus, jobs, showpossible):
+class TemplateItem:
     """
     Taking in the input from the template, in the form of [job;field;output values]
     and taking in the data from the jobs, return an appropriate string for the output.
     
     This will depend on the type of field in hudsonStatus.
     """
+    def __init__(self, text, statuses):
+        values = text.split(";")
+        self.__jobId = values[0]
+        self.__name = values[1]
+        self.__options = None
+        if len(values) > 2:
+            self.__options = values[2]
+        self.__status = statuses[self.__jobId]
+
+    def __processResultField(self):
+        """Process the 'result' field """
+
+        # default outputs
+        status = {
+            "SUCCESS":"SUCCESS",   # option 0
+            "FAILURE":"FAILURE",   # option 1
+            "BUILDING":"BUILDING", # option 2
+            "UNSTABLE":"UNSTABLE", # option 3
+            "ERROR":"ERROR"        # option 4
+            }
+        # parse the options
+        if not self.__options is None:
+            options = self.__options.split(",")
+            num = len(options)
+            status["SUCCESS"]  = options[0]
+            if num > 1:
+                status["FAILURE"]  = options[1]
+                if num > 2:
+                    status["BUILDING"] = options[2]
+                    if num > 3:
+                        status["UNSTABLE"] = options[3]
+                        if num > 4:
+                            status["ERROR"]    = options[4]
+
+        def format(status): # inner method for adding percentage
+            if '%' in status:
+                percent = float(self.__status['duration'])/float(self.__status['estimatedDuration'])
+                return status % percent
+            else:
+                return status
+
+        # conver the status to a string
+        result = self.__status["result"]
+        if result is None:
+            if job["building"]:
+                return format(status["BUILDING"])
+            else:
+                return format(status["ERROR"])
+        else:
+            return format(status[result])
         
-    fieldValues = hudsonStatus.split(";")
+    def __processCulpritField(self):
+        """Process the 'culprit' field"""
     
-    jobId = fieldValues[0]
-    job = {}
-    if jobId in jobs:
-        job = jobs[jobId]
-    else:
-        return "No Data" 
+        # set the default value if not specified
+        default = self.__options
+        if default is None:
+            default = "unknown"
+
+        # get the list of culprits
+        rawCulprits = self.__status["culprits"]
+        if(rawCulprits == None):
+            return default
+
+        # convert them to their full names
+        culprits = []
+        for culprit in rawCulprits:
+            if len(culprit["fullName"]):
+                culprits.append(culprit["fullName"])
+
+        # return a comma separated list
+        if len(culprits) > 0:
+            return ', '.join(culprits)
+        else:
+            return default
+
+    def __str__(self):
+        if(self.__name == "result"):
+            return self.__processResultField()
+        elif(self.__name == "culprit"):
+            return self.__processCulpritField()
+        else: #if it doesn't match anything, just attempt to return it's value
+            return self.__status[self.__name]
+        
     
-    fieldName = fieldValues[1]
-    options = None
-    
-    if(len(fieldValues) > 2):
-        options = fieldValues[2]
-    
-    if showpossible:
-        print "possible keys: ", job.keys() ############REMOVE
-        return ""
-    
-    retVal = ''
-    statusValue = None
-    
-    if(fieldName == "result"):
-        retVal = processResultField(job, options)
-    elif(fieldName == "culprit"):
-        retVal = processCulpritField(job, options)
-    else: #if it doesn't match anything, just attempt to return it's value
-        retVal = job[fieldName]
-    
-    #if len(fieldValues) == 3:
-    #    retVal = getOutputByField(fieldValues[1], statusValue, fieldValues[2])
-    #else:
-    #    retVal = jobs[fieldValues[0]][fieldValues[1]]
-    #        
-    #        
-    return retVal
-    
+def parseResultFields(hudsonStatus, statuses):
+    item = TemplateItem(hudsonStatus, statuses)
+    return str(item)
     
 def parseTemplate(contents, baseurl, jobs, showpossible):
     thing = re.finditer("\[(.*?)\]", contents)
-    jobData = getAndRemoveJobs(thing,contents)
+    (statuses, template) = getAndRemoveJobs(thing,contents)
     if baseurl is not None and jobs is not None:
-        jobData[0][str(len(jobData[0].keys())+1)] = getJobStatus(baseurl, jobs)
-    
-    final = getOutput(jobData[1], jobData[0], showpossible)
+        statuses[str(len(statuses.keys())+1)] = HudsonStatus(baseurl, jobs)
+
+    if showpossible:
+        key = statuses.keys()[0]
+        print "possible keys: ", statuses[key].keys()
+        return ""
+
+    final = getOutput(template, statuses)
     
     #print "FINAL CONTENTS ====================\n",final
     #print "DONE =============================="
@@ -193,9 +186,8 @@ def outputBuildStatus(template, baseurl, jobs, showpossible):
     contents = f.read()
     templateValues = parseTemplate(contents, baseurl, jobs, showpossible)
     
-    print templateValues
-    
-    #parseAllTemplateValues(templateValues)
+    if len(templateValues) > 0:
+        print templateValues
 
 def main(argv):
     import optparse
