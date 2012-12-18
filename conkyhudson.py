@@ -5,67 +5,13 @@ import getopt
 from hudsonstatus import HudsonStatus
 import re
 
-def getOutput(template, statuses):
-    output = u""
-    end = False
-    a = 0
-        
-    # a and b are indexes in the template string
-    # moving from left to right the string is processed
-    # b is index of the opening bracket and a of the closing bracket
-    # everything between b and a is a template that needs to be parsed
-    while not end:
-        b = template.find('[', a)
-        
-        if b == -1:
-            b = len(template)
-            end = True            
-        # if there is something between a and b, append it straight to output
-        if b > a:
-            output += template[a : b]
-            # check for the escape char (if we are not at the end)
-            if template[b - 1] == '\\' and not end:
-                # if its there, replace it by the bracket
-                output = output[:-1] + '['
-                # skip the bracket in the input string and continue from the beginning
-                a = b + 1
-                continue
-                    
-        if end:
-            break
-            
-        a = template.find(']', b)
-            
-        if a == -1:
-            self.logError("Missing terminal bracket (]) for a template item")
-            return u""
-            
-        # if there is some template text...
-        if a > b + 1:
-            output += parseResultFields(template[b + 1 : a], statuses)
-            
-        a = a + 1
-
-    return output
-
-    
-def getAndRemoveJobs(templateIter, contents):
-    """Removes the jobs from the template and gets the info from hudson
-    on the job"""
-    
-    jobs = {}
-    charsRemoved = 0
-    
+def fillTemplate(contents, statuses):
+    templateIter = re.finditer("\[(.*?)\]", contents)
     for templateValue in templateIter:
-        theString = templateValue.group(1)
-        fieldValues = theString.split(";")
-        if(fieldValues[0] == "job"):
-            status = HudsonStatus(fieldValues[2],fieldValues[3])
-            jobs[fieldValues[1]] = status
-            contents = contents[0:templateValue.start() - charsRemoved] + contents[templateValue.end()- charsRemoved+1:]
-            charsRemoved += templateValue.end() - templateValue.start()+1;
-            
-    return [jobs, contents]
+        expanded = TemplateItem(templateValue.group(1), statuses)
+        contents = contents.replace(templateValue.group(0), str(expanded))
+
+    return contents
 
 class TemplateItem:
     """
@@ -76,7 +22,7 @@ class TemplateItem:
     """
     def __init__(self, text, statuses):
         values = text.split(";")
-        self.__jobId = values[0]
+        self.__jobId = int(values[0])
         self.__name = values[1]
         self.__options = None
         if len(values) > 2:
@@ -158,36 +104,78 @@ class TemplateItem:
         else: #if it doesn't match anything, just attempt to return it's value
             return self.__status[self.__name]
         
-    
-def parseResultFields(hudsonStatus, statuses):
-    item = TemplateItem(hudsonStatus, statuses)
-    return str(item)
-    
-def parseTemplate(contents, baseurl, jobs, showpossible):
-    thing = re.finditer("\[(.*?)\]", contents)
-    (statuses, template) = getAndRemoveJobs(thing,contents)
-    if baseurl is not None and jobs is not None:
-        statuses[str(len(statuses.keys())+1)] = HudsonStatus(baseurl, jobs)
+class TemplateFile:
+    def __init__(self, filename):
+        # read the file
+        f=open(filename)
+        self.contents = f.read()
+        f.close()
+        
+        # parse the template
+        self.__getAndRemoveJobs()
 
+    def __getAndRemoveJobs(self):
+        """Removes the jobs from the template and gets the info from hudson
+        on the job"""
+    
+        self.__jobDescr = {} # description of the jobs as (baseurl, name)
+        templateIter = re.finditer("\[(job.*?)\]\\s+", self.contents)
+        for templateValue in templateIter:
+            theString = templateValue.group(1)
+            fieldValues = theString.split(";")
+            self.__jobDescr[int(fieldValues[1])] = (fieldValues[2],fieldValues[3]) # last one wins
+            self.contents = self.contents.replace(templateValue.group(0), '')
+
+    def addJobs(self, baseurl, jobs):
+        """Add an extra one specified on the command line.
+        Multiple jobs at the same url are comma separated."""
+        # determine the key
+        if len(self.__jobDescr.keys()) <= 0:
+            key = 1
+        else:
+            key = max(self.__jobDescr.keys()) + 1
+
+        jobs = jobs.split(',')
+        for job in jobs:
+            self.__jobDescr[key] = (baseurl, job)
+            key += 1
+
+    def keys(self):
+        return self.__jobDescr.keys()
+
+    def descr(self, key):
+        key = int(key)
+        return self.__jobDescr[key]
+
+    def getStatus(self, key):
+        (baseurl, job) = self.descr(key)
+        return HudsonStatus(baseurl, job)
+
+    def getFirstStatus(self):
+        key = self.__jobDescr.keys()[0]
+        return self.getStatus(key)
+
+
+def outputBuildStatus(filename, baseurl, jobs, showpossible):
+    # parse the template
+    template = TemplateFile(filename)
+    template.addJobs(baseurl, jobs)
+
+    # skip out early
     if showpossible:
-        key = statuses.keys()[0]
-        print "possible keys: ", statuses[key].keys()
-        return ""
+        status = template.getFirstStatus()
+        print "possible keys: ", status.keys()
+        return
 
-    final = getOutput(template, statuses)
-    
-    #print "FINAL CONTENTS ====================\n",final
-    #print "DONE =============================="
+    # convert the job descriptions into statuses
+    statuses = {}
+    for key in template.keys():
+        statuses[key] = template.getStatus(key)
 
-    return final
-
-def outputBuildStatus(template, baseurl, jobs, showpossible):
-    f=open(template)
-    contents = f.read()
-    templateValues = parseTemplate(contents, baseurl, jobs, showpossible)
-    
-    if len(templateValues) > 0:
-        print templateValues
+    # do all of the formatting
+    final = fillTemplate(template.contents, statuses)
+    if len(final) > 0:
+        print final
 
 def main(argv):
     import optparse
