@@ -173,11 +173,11 @@ def parseResultFields(hudsonStatus, jobs):
     return retVal
     
     
-def parseTemplate(contents, server, jobs):
+def parseTemplate(contents, baseurl, jobs):
     thing = re.finditer("\[(.*?)\]", contents)
     jobData = getAndRemoveJobs(thing,contents)
-    if server is not None and jobs is not None:
-        jobData[0][str(len(jobData[0].keys())+1)] = getJobStatus(server, jobs)
+    if baseurl is not None and jobs is not None:
+        jobData[0][str(len(jobData[0].keys())+1)] = getJobStatus(baseurl, jobs)
     
     final = getOutput(jobData[1], jobData[0])
     
@@ -186,10 +186,10 @@ def parseTemplate(contents, server, jobs):
 
     return final
 
-def outputBuildStatus(template, server, jobs):
+def outputBuildStatus(template, baseurl, jobs):
     f=open(template)
     contents = f.read()
-    templateValues = parseTemplate(contents, server, jobs)
+    templateValues = parseTemplate(contents, baseurl, jobs)
     
     print templateValues
     
@@ -200,14 +200,14 @@ def main(argv):
     parser = optparse.OptionParser("usage: %prog <options>",
                                    None, optparse.Option, "0.2", 'error')
     parser.add_option("-t", "--template", dest="template", default=None)
-    parser.add_option("-s", "--server", dest="server", default=None)
+    parser.add_option("-b", "--baseurl", dest="baseurl", default=None)
     parser.add_option("-j", "--jobs", dest="jobs", default=None)
     (options, args) = parser.parse_args()
 
     if options.template is None:
         parser.error("Failed to specify the template")
 
-    outputBuildStatus(options.template, options.server, options.jobs)
+    outputBuildStatus(options.template, options.baseurl, options.jobs)
     
     
 if __name__ == "__main__":
