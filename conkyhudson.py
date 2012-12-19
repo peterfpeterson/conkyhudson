@@ -64,7 +64,7 @@ class TemplateItem:
         # conver the status to a string
         result = self.__status["result"]
         if result is None:
-            if job["building"]:
+            if self.__status["building"]:
                 return format(status["BUILDING"])
             else:
                 return format(status["ERROR"])
