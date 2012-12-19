@@ -129,6 +129,11 @@ class TemplateFile:
     def addJobs(self, baseurl, jobs):
         """Add an extra one specified on the command line.
         Multiple jobs at the same url are comma separated."""
+        if baseurl is None:
+            return
+        if jobs is None:
+            return
+
         # determine the key
         if len(self.__jobDescr.keys()) <= 0:
             key = 1
@@ -155,14 +160,26 @@ class TemplateFile:
         key = self.__jobDescr.keys()[0]
         return self.getStatus(key)
 
+def main(argv):
+    import optparse
+    parser = optparse.OptionParser("usage: %prog <options>",
+                                   None, optparse.Option, "0.2", 'error')
+    parser.add_option("-t", "--template", dest="template", default=None)
+    parser.add_option("-b", "--baseurl", dest="baseurl", default=None)
+    parser.add_option("-j", "--jobs", dest="jobs", default=None)
+    parser.add_option("", "--showpossible", dest="showpossible", action="store_true")
+    (options, args) = parser.parse_args()
 
-def outputBuildStatus(filename, baseurl, jobs, showpossible):
+    # template file is required
+    if options.template is None:
+        parser.error("Failed to specify the template")
+
     # parse the template
-    template = TemplateFile(filename)
-    template.addJobs(baseurl, jobs)
+    template = TemplateFile(options.template)
+    template.addJobs(options.baseurl, options.jobs)
 
     # skip out early
-    if showpossible:
+    if options.showpossible:
         status = template.getFirstStatus()
         print "possible keys: ", status.keys()
         return
@@ -177,21 +194,5 @@ def outputBuildStatus(filename, baseurl, jobs, showpossible):
     if len(final) > 0:
         print final
 
-def main(argv):
-    import optparse
-    parser = optparse.OptionParser("usage: %prog <options>",
-                                   None, optparse.Option, "0.2", 'error')
-    parser.add_option("-t", "--template", dest="template", default=None)
-    parser.add_option("-b", "--baseurl", dest="baseurl", default=None)
-    parser.add_option("-j", "--jobs", dest="jobs", default=None)
-    parser.add_option("", "--showpossible", dest="showpossible", action="store_true")
-    (options, args) = parser.parse_args()
-
-    if options.template is None:
-        parser.error("Failed to specify the template")
-
-    outputBuildStatus(options.template, options.baseurl, options.jobs, showpossible=options.showpossible)
-    
-    
 if __name__ == "__main__":
     main(sys.argv[1:])
