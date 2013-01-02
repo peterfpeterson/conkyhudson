@@ -38,7 +38,8 @@ class TemplateItem:
             "FAILURE":"FAILURE",   # option 1
             "BUILDING":"BUILDING", # option 2
             "UNSTABLE":"UNSTABLE", # option 3
-            "ERROR":"ERROR"        # option 4
+            "ERROR":"ERROR",       # option 4
+            "ABORTED":"ABORTED"    # option 5
             }
         # parse the options
         if not self.__options is None:
@@ -53,6 +54,8 @@ class TemplateItem:
                         status["UNSTABLE"] = options[3]
                         if num > 4:
                             status["ERROR"]    = options[4]
+                            if num > 5:
+                                status["ABORTED"]    = options[5]
 
         def format(status): # inner method for adding percentage
             if '%' in status:
@@ -96,16 +99,52 @@ class TemplateItem:
         else:
             return default
 
+    def __processHeathReportField(self):
+        statusType = 'Build' # other option is 'Test'
+        statusKey = 'score'
+        if not self.__options is None:
+            temp = self.__options.split(",")
+            statusType = temp[0]
+            if len(temp) > 1:
+                statusKey = temp[1]
+
+        # update to the correct status type
+        status = None
+        for item in self.__status[self.__name]:
+            if item['description'].startswith(statusType):
+                status = item
+                break
+
+        return str(status[statusKey])+"%"
+
+    def __processBuildableField(self):
+        options = ['active', 'disabled']
+        if not self.__options is None:
+            temp = self.__options.split(',')
+            for i in range(len(temp)):
+                options[i] = temp[i]
+
+        result = bool(self.__status[self.__name])
+        if result:
+            return options[0]
+        else:
+            return options[1]
+
     def __str__(self):
         if(self.__name == "result"):
             return self.__processResultField()
         elif(self.__name == "culprit"):
             return self.__processCulpritField()
+        elif(self.__name == "healthReport"):
+            return self.__processHeathReportField()
+        elif(self.__name == "buildable"):
+            return self.__processBuildableField()
         else: #if it doesn't match anything, just attempt to return it's value
-            return self.__status[self.__name]
+            return str(self.__status[self.__name])
         
 class TemplateFile:
-    def __init__(self, filename):
+    def __init__(self, filename, debug=0):
+        self.debug = debug
         # read the file
         f=open(filename)
         self.contents = f.read()
@@ -126,7 +165,7 @@ class TemplateFile:
             self.__jobDescr[int(fieldValues[1])] = (fieldValues[2],fieldValues[3]) # last one wins
             self.contents = self.contents.replace(templateValue.group(0), '')
 
-    def addJobs(self, baseurl, jobs):
+    def addJobs(self, baseurl, buildurlext, jobs):
         """Add an extra one specified on the command line.
         Multiple jobs at the same url are comma separated."""
         if baseurl is None:
@@ -142,7 +181,7 @@ class TemplateFile:
 
         jobs = jobs.split(',')
         for job in jobs:
-            self.__jobDescr[key] = (baseurl, job)
+            self.__jobDescr[key] = (baseurl, buildurlext, job)
             key += 1
 
     def keys(self):
@@ -153,8 +192,8 @@ class TemplateFile:
         return self.__jobDescr[key]
 
     def getStatus(self, key):
-        (baseurl, job) = self.descr(key)
-        return HudsonStatus(baseurl, job)
+        (baseurl, job, buildurlext) = self.descr(key)
+        return HudsonStatus(baseurl, buildurlext, job, debug=(self.debug>0))
 
     def getFirstStatus(self):
         key = self.__jobDescr.keys()[0]
@@ -166,8 +205,10 @@ def main(argv):
                                    None, optparse.Option, "0.2", 'error')
     parser.add_option("-t", "--template", dest="template", default=None)
     parser.add_option("-b", "--baseurl", dest="baseurl", default=None)
+    parser.add_option("", "--buildurlext", dest="buildurlext", default="lastBuild")
     parser.add_option("-j", "--jobs", dest="jobs", default=None)
     parser.add_option("", "--showpossible", dest="showpossible", action="store_true")
+    parser.add_option("-d", "--debug", dest="debug", default=0, action="count")
     (options, args) = parser.parse_args()
 
     # template file is required
@@ -175,8 +216,8 @@ def main(argv):
         parser.error("Failed to specify the template")
 
     # parse the template
-    template = TemplateFile(options.template)
-    template.addJobs(options.baseurl, options.jobs)
+    template = TemplateFile(options.template, options.debug)
+    template.addJobs(options.baseurl, options.buildurlext, options.jobs)
 
     # skip out early
     if options.showpossible:
