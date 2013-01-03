@@ -5,6 +5,8 @@ import getopt
 from hudsonstatus import HudsonStatus
 import re
 
+DEFAULT_URL_EXT = "lastBuild"
+
 def fillTemplate(contents, statuses):
     templateIter = re.finditer("\[(.*?)\]", contents)
     for templateValue in templateIter:
@@ -149,6 +151,8 @@ class TemplateFile:
         f=open(filename)
         self.contents = f.read()
         f.close()
+
+        self.__lastBaseUrl = None
         
         # parse the template
         self.__getAndRemoveJobs()
@@ -162,15 +166,38 @@ class TemplateFile:
         for templateValue in templateIter:
             theString = templateValue.group(1)
             fieldValues = theString.split(";")
-            self.__jobDescr[int(fieldValues[1])] = (fieldValues[2],fieldValues[3]) # last one wins
+
+            jobNum = int(fieldValues[1])
+
+            # make sure that there is something to do
+            numValues = len(fieldValues)
+            if numValues < 3:
+                raise RuntimeError("Did not specify enough information for the job. Only %d fields found" % numValues)
+            self.__lastBaseUrl = fieldValues[2]
+
+            # add the specified job as appropriate
+            if numValues > 3:
+                jobs = fieldValues[3]
+                if numValues > 4: # everything else is trash
+                    urlexts = fieldValues[4]
+                else:
+                    urlexts = DEFAULT_URL_EXT
+
+                self.__jobDescr[jobNum] = (self.__lastBaseUrl, jobs, urlexts)
+
+            # strip off the extra values
             self.contents = self.contents.replace(templateValue.group(0), '')
 
     def addJobs(self, baseurl, buildurlext, jobs):
         """Add an extra one specified on the command line.
         Multiple jobs at the same url are comma separated."""
+        if self.debug > 1:
+            print "addJobs('%s', '%s', '%s')" % (baseurl, jobs, buildurlext)
         if baseurl is None:
-            return
+            baseurl = self.__lastBaseUrl
         if jobs is None:
+            if self.debug > 0:
+                print "in addJobs: no job was specified"
             return
 
         # determine the key
@@ -181,7 +208,7 @@ class TemplateFile:
 
         jobs = jobs.split(',')
         for job in jobs:
-            self.__jobDescr[key] = (baseurl, buildurlext, job)
+            self.__jobDescr[key] = (baseurl, job, buildurlext)
             key += 1
 
     def keys(self):
@@ -191,9 +218,19 @@ class TemplateFile:
         key = int(key)
         return self.__jobDescr[key]
 
+    def numJobs(self):
+        return len(self.__jobDescr)
+
     def getStatus(self, key):
         (baseurl, job, buildurlext) = self.descr(key)
-        return HudsonStatus(baseurl, buildurlext, job, debug=(self.debug>0))
+        if baseurl is None:
+            raise RuntimeError("Failed to specify base url")
+        if job is None:
+            raise RuntimeError("Failed to specify job name")
+        if buildurlext is None:
+            buildurlext = DEFAULT_URL_EXT # default to reasonable value
+        #print "getStatus(%s) : %s" %(key, self.descr(key))
+        return HudsonStatus(baseurl, job, buildurlext, debug=(self.debug>0))
 
     def getFirstStatus(self):
         key = self.__jobDescr.keys()[0]
@@ -205,7 +242,7 @@ def main(argv):
                                    None, optparse.Option, "0.2", 'error')
     parser.add_option("-t", "--template", dest="template", default=None)
     parser.add_option("-b", "--baseurl", dest="baseurl", default=None)
-    parser.add_option("", "--buildurlext", dest="buildurlext", default="lastBuild")
+    parser.add_option("-e", "--buildurlext", dest="buildurlext", default=DEFAULT_URL_EXT)
     parser.add_option("-j", "--jobs", dest="jobs", default=None)
     parser.add_option("", "--showpossible", dest="showpossible", action="store_true")
     parser.add_option("-d", "--debug", dest="debug", default=0, action="count")
@@ -218,6 +255,8 @@ def main(argv):
     # parse the template
     template = TemplateFile(options.template, options.debug)
     template.addJobs(options.baseurl, options.buildurlext, options.jobs)
+    if template.numJobs() <= 0:
+        parser.error("Failed to specify any jobs")
 
     # skip out early
     if options.showpossible:
