@@ -188,11 +188,11 @@ class TemplateFile:
             # strip off the extra values
             self.contents = self.contents.replace(templateValue.group(0), '')
 
-    def addJobs(self, baseurl, buildurlext, jobs):
+    def addJobs(self, baseurl, jobs, buildurlexts):
         """Add an extra one specified on the command line.
         Multiple jobs at the same url are comma separated."""
         if self.debug > 1:
-            print "addJobs('%s', '%s', '%s')" % (baseurl, jobs, buildurlext)
+            print "addJobs('%s', '%s', '%s')" % (baseurl, jobs, buildurlexts)
         if baseurl is None:
             baseurl = self.__lastBaseUrl
         if jobs is None:
@@ -206,10 +206,10 @@ class TemplateFile:
         else:
             key = max(self.__jobDescr.keys()) + 1
 
-        jobs = jobs.split(',')
-        for job in jobs:
-            self.__jobDescr[key] = (baseurl, job, buildurlext)
-            key += 1
+        for job in jobs.split(','):
+            for ext in buildurlexts.split(','):
+                self.__jobDescr[key] = (baseurl, job, ext)
+                key += 1
 
     def keys(self):
         return self.__jobDescr.keys()
@@ -254,7 +254,7 @@ def main(argv):
 
     # parse the template
     template = TemplateFile(options.template, options.debug)
-    template.addJobs(options.baseurl, options.buildurlext, options.jobs)
+    template.addJobs(options.baseurl, options.jobs, options.buildurlext)
     if template.numJobs() <= 0:
         parser.error("Failed to specify any jobs")
 
