@@ -117,7 +117,7 @@ class TemplateItem:
                 status = item
                 break
 
-        return str(status[statusKey])+"%"
+        return "%3s" % str(status[statusKey]) + "%"
 
     def __processBuildableField(self):
         options = ['active', 'disabled']
