@@ -10,7 +10,10 @@ class HudsonStatus:
         if debug:
             print "URL:", self.__urlString
 
-        self.__rawJob = eval(urllib2.urlopen(self.__urlString, timeout=2).read())
+        try:
+            self.__rawJob = eval(urllib2.urlopen(self.__urlString, timeout=2).read())
+        except urllib2.URLError, e:
+            raise RuntimeError("Reading '%s' timed out" % self.__urlString)
         
     def __repr__(self):
         return "HudsonStatus(%s)" % self.__urlString
