@@ -97,7 +97,12 @@ class TemplateItem:
 
         # return a comma separated list
         if len(culprits) > 0:
-            return ', '.join(culprits)
+            MAX_LEN = 25
+            culprits = ', '.join(culprits)
+            if len(culprits) > MAX_LEN:
+                return culprits[:MAX_LEN-3] + "..."
+            else:
+                return culprits
         else:
             return default
 
